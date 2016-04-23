@@ -1,3 +1,4 @@
+import "rxjs/Rx";
 import {Inject, provide, Provider} from "angular2/core";
 import {Http, Request, RequestMethod, Headers, RequestOptions, Response, URLSearchParams} from "angular2/http";
 import {Observable} from "rxjs/Observable";
@@ -9,55 +10,64 @@ export interface ResourceRequestInterceptor {
 }
 
 export interface ResourceResponseInterceptor {
-	(observable:Observable<any>):Observable<any>;
+	(observable: Observable<any>): Observable<any>;
 }
 
 export interface ResourceParamsBase {
-	url?:string,
-	path?:string,
-	headers?:any,
-	params?:any,
-	data?:any,
-	requestInterceptor?:ResourceRequestInterceptor,
-	responseInterceptor?:ResourceResponseInterceptor
+	url?: string,
+	path?: string,
+	headers?: any,
+	params?: any,
+	data?: any,
+	requestInterceptor?: ResourceRequestInterceptor,
+	responseInterceptor?: ResourceResponseInterceptor,
+	add2Provides?: boolean
 }
 
 export interface ResourceActionBase extends ResourceParamsBase {
-	method:RequestMethod
+	method: RequestMethod,
+	isArray?: boolean,
+	isPending?: boolean,
+	isLazy?: boolean,
 }
+
+export interface ResourceResult {
+	$resolved?: boolean,
+	$observable?: Observable<any>
+}
+
 
 
 export class Resource {
 
-	constructor(@Inject(Http) protected http:Http) {}
+	constructor( @Inject(Http) protected http: Http) { }
 
-	protected requestInterceptor(req:Request) {}
+	protected requestInterceptor(req: Request) { }
 
-	protected responseInterceptor(observable:Observable<any>):Observable<any> {
-		observable.map(res => res.json());
-		return observable;
+	protected responseInterceptor(observable: Observable<any>): Observable<any> {
+		return observable.map(res => res.json());
 	}
 
-	getUrl():string {
+	getUrl(): string {
 		return '';
 	}
 
-	getPath():string {
+	getPath(): string {
 		return '';
 	}
 
-	getHeaders():any {
+	getHeaders(): any {
 		return {
 			'Accept': 'application/json',
 			'Content-Type': 'application/json'
 		};
 	}
 
-	getParams():any {
+	getParams(): any {
 		return null;
 	}
 
-	getData():any {
+	getData(): any {
 		return null;
 	}
 
@@ -66,7 +76,15 @@ export class Resource {
 	@ResourceAction({
 		method: RequestMethod.Get
 	})
-	get(data?:any):Observable<any> {
+	get(data?: any, callback?: Function): ResourceResult {
+		return null;
+	}
+
+	@ResourceAction({
+		method: RequestMethod.Get,
+		isArray: true
+	})
+	query(data?: any, callback?: Function): ResourceResult {
 		return null;
 	}
 
@@ -74,7 +92,7 @@ export class Resource {
 	@ResourceAction({
 		method: RequestMethod.Post
 	})
-	save(data?:any):Observable<any> {
+	save(data?: any, callback?: Function): ResourceResult {
 		return null;
 	}
 
@@ -82,7 +100,7 @@ export class Resource {
 	@ResourceAction({
 		method: RequestMethod.Put
 	})
-	update(data?:any):Observable<any> {
+	update(data?: any, callback?: Function): ResourceResult {
 		return null;
 	}
 
@@ -90,22 +108,32 @@ export class Resource {
 	@ResourceAction({
 		method: RequestMethod.Delete
 	})
-	remove(data?:any):Observable<any> {
+	remove(data?: any, callback?: Function): ResourceResult {
 		return null;
 	}
 
 
-	delete(data?:any):Observable<any> {
-		return this.remove(data);
+	delete(data?: any, callback?: Function): ResourceResult {
+		return this.remove(data, callback);
 	}
 
 }
 
 
-function parseUrl(url):any[] {
+
+// export class ObservableResource<T> extends Observable<T> {
+//
+// 	returnArray: boolean = false;
+//
+// 	$ng1() {}
+//
+// }
+
+
+function parseUrl(url): any[] {
 	let params = [];
-	let index:number = url.indexOf('{');
-	let lastIndex:number;
+	let index: number = url.indexOf('{');
+	let lastIndex: number;
 	while (index > -1) {
 		lastIndex = url.indexOf('}', index);
 		if (lastIndex == -1) {
@@ -121,16 +149,15 @@ function parseUrl(url):any[] {
 
 
 
-export function ResourceAction(action?:ResourceActionBase) {
-	return function (target: Resource, propertyKey: string, descriptor: PropertyDescriptor) {
+export function ResourceAction(action?: ResourceActionBase) {
+	return function(target: Resource, propertyKey: string, descriptor: PropertyDescriptor) {
 
 		descriptor.value = function(...args: any[]) {
-			console.log(args);
 
 			let isGetRequest = action.method === RequestMethod.Get;
 
 			// Creating URL
-			let url:string =
+			let url: string =
 				(action.url ? action.url : this.getUrl()) +
 				(action.path ? action.path : this.getPath());
 
@@ -139,6 +166,20 @@ export function ResourceAction(action?:ResourceActionBase) {
 
 			// Setting data
 			let data = args.length ? args[0] : null;
+			let callback = args.length > 1 ? args[1] : null;
+			if (typeof data === 'function') {
+				if (!callback) {
+					callback = data;
+					data = null;
+				} else if (typeof callback !== 'function') {
+					let tmpData = callback;
+					callback = data;
+					data = tmpData;
+				} else {
+					data = null;
+				}
+
+			}
 			let params = Object.assign({}, action.params || this.getParams());
 
 			// Setting default data parameters
@@ -167,12 +208,12 @@ export function ResourceAction(action?:ResourceActionBase) {
 			// Parsing url for params
 			var pathParams = parseUrl(url);
 
-			for (let i=0; i<pathParams.length; i++) {
+			for (let i = 0; i < pathParams.length; i++) {
 
 				let param = pathParams[i];
 
-				let key:string = param.substr(1, param.length-2);
-				let value:string = null;
+				let key: string = param.substr(1, param.length - 2);
+				let value: string = null;
 				let isMandatory = key[0] == '!';
 				if (isMandatory) {
 					key = key.substr(1);
@@ -200,7 +241,7 @@ export function ResourceAction(action?:ResourceActionBase) {
 					// Checking if it's mandatory param
 					if (isMandatory) {
 						return Observable.create(observer => {
-							observer.onError(new Error('Mandatory '+param+' path parameter is missing'));
+							observer.onError(new Error('Mandatory ' + param + ' path parameter is missing'));
 						});
 					}
 					url = url.substr(0, url.indexOf(param));
@@ -238,7 +279,7 @@ export function ResourceAction(action?:ResourceActionBase) {
 			}
 
 			// Setting search params
-			let search:URLSearchParams = new URLSearchParams();
+			let search: URLSearchParams = new URLSearchParams();
 			for (let key in searchParams) {
 				if (!usedPathParams[key]) {
 					let value = searchParams[key];
@@ -271,9 +312,60 @@ export function ResourceAction(action?:ResourceActionBase) {
 
 			// Doing the request
 			let observable: Observable<Response> = this.http.request(req);
-			
-			return action.responseInterceptor ?
+
+			observable = action.responseInterceptor ?
 				action.responseInterceptor(observable) : this.responseInterceptor(observable);
+
+			let ret: ResourceResult;
+
+			if (action.isPending) {
+				ret = {};
+			} else {
+				ret = action.isArray ? [] : {};
+			}
+
+			ret.$resolved = false;
+			ret.$observable = observable;
+
+			if (action.isPending != null) {
+				console.warn('isPending is deprecated. Please use isLazy instead');
+				if (action.isLazy == null) {
+					action.isLazy = action.isPending;
+				}
+			}
+
+			if (!action.isLazy) {
+				observable.subscribe(
+					resp => {
+
+						if (action.isArray) {
+							if (!Array.isArray(resp)) {
+								console.error('Returned data should be an array. Received', resp);
+								return;
+							}
+							Array.prototype.push.apply(ret, resp);
+						} else {
+							if (Array.isArray(resp)) {
+								console.error('Returned data should be an object. Received', resp);
+								return;
+							}
+							Object.assign(ret, resp);
+						}
+
+					},
+					err => {},
+					() => {
+						ret.$resolved = true;
+						if (callback) {
+							callback(ret);
+						}
+					}
+				);
+			}
+
+
+			return ret;
+
 
 		}
 
@@ -281,20 +373,24 @@ export function ResourceAction(action?:ResourceActionBase) {
 }
 
 
-export let RESOURCE_PROVIDERS:Provider[] = [];
+export let RESOURCE_PROVIDERS: Provider[] = [];
 
-export function ResourceProvide():Function {
-	return function (target: { new(http:Http): Resource }) {
-		RESOURCE_PROVIDERS.push(provide(target, {
-			useFactory: (http: Http) => new target(http),
-			deps: [Http]
-		}));
+export function ResourceProvide(): Function {
+	return function() {
+		console.warn('ResourceProvide decorator is deprecated.');
 	}
 }
 
-export function ResourceParams(params:ResourceParamsBase) {
+export function ResourceParams(params: ResourceParamsBase) {
 
-	return function (target: Function) {
+	return function(target: { new (http: Http): Resource }) {
+
+		if (params.add2Provides !== false) {
+			RESOURCE_PROVIDERS.push(provide(target, {
+				useFactory: (http: Http) => new target(http),
+				deps: [Http]
+			}));
+		}
 
 		if (params.url) {
 			target.prototype.getUrl = function() {
@@ -303,25 +399,25 @@ export function ResourceParams(params:ResourceParamsBase) {
 		}
 
 		if (params.path) {
-			target.prototype.getPath = function () {
+			target.prototype.getPath = function() {
 				return params.path;
 			};
 		}
 
 		if (params.headers) {
-			target.prototype.getHeaders = function () {
+			target.prototype.getHeaders = function() {
 				return params.headers;
 			};
 		}
 
 		if (params.params) {
-			target.prototype.getParams = function () {
+			target.prototype.getParams = function() {
 				return params.params;
 			};
 		}
 
 		if (params.data) {
-			target.prototype.getData = function () {
+			target.prototype.getData = function() {
 				return params.data;
 			};
 		}

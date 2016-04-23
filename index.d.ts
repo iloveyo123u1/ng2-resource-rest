@@ -1,3 +1,4 @@
+import "rxjs/Rx";
 import { Provider } from "angular2/core";
 import { Http, Request, RequestMethod } from "angular2/http";
 import { Observable } from "rxjs/Observable";
@@ -15,9 +16,17 @@ export interface ResourceParamsBase {
     data?: any;
     requestInterceptor?: ResourceRequestInterceptor;
     responseInterceptor?: ResourceResponseInterceptor;
+    add2Provides?: boolean;
 }
 export interface ResourceActionBase extends ResourceParamsBase {
     method: RequestMethod;
+    isArray?: boolean;
+    isPending?: boolean;
+    isLazy?: boolean;
+}
+export interface ResourceResult {
+    $resolved?: boolean;
+    $observable?: Observable<any>;
 }
 export declare class Resource {
     protected http: Http;
@@ -29,13 +38,14 @@ export declare class Resource {
     getHeaders(): any;
     getParams(): any;
     getData(): any;
-    get(data?: any): Observable<any>;
-    save(data?: any): Observable<any>;
-    update(data?: any): Observable<any>;
-    remove(data?: any): Observable<any>;
-    delete(data?: any): Observable<any>;
+    get(data?: any, callback?: Function): ResourceResult;
+    query(data?: any, callback?: Function): ResourceResult;
+    save(data?: any, callback?: Function): ResourceResult;
+    update(data?: any, callback?: Function): ResourceResult;
+    remove(data?: any, callback?: Function): ResourceResult;
+    delete(data?: any, callback?: Function): ResourceResult;
 }
 export declare function ResourceAction(action?: ResourceActionBase): (target: Resource, propertyKey: string, descriptor: PropertyDescriptor) => void;
 export declare let RESOURCE_PROVIDERS: Provider[];
 export declare function ResourceProvide(): Function;
-export declare function ResourceParams(params: ResourceParamsBase): (target: Function) => void;
+export declare function ResourceParams(params: ResourceParamsBase): (target: new (http: Http) => Resource) => void;

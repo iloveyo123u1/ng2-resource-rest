@@ -1,3 +1,4 @@
+[![npm version](https://badge.fury.io/js/ng2-resource-rest.svg)](http://badge.fury.io/js/ng2-resource-rest)
 # ng2-resource-rest
 Resource (REST) Client for Angular 2
 
@@ -5,12 +6,14 @@ To use the module install the module using below command
 
 `npm install ng2-resource-rest --save`
 
+
+
 ### How to use
 
 ***Creating simple resource (./resources/UserRes.ts)***
 ```javascript
 // Import necessary staff
-import {Resource, ResourceParams} from "ng2-resouce-rest";
+import {Resource, ResourceParams} from "ng2-resource-rest";
 import {Injectable} from "angular2/core";
 
 
@@ -43,6 +46,8 @@ import {RESOURCE_PROVIDERS} from "ng2-resource-rest";
 })
 export class MyApp {
 
+	allUsers: any[];
+
 	constructor(private platform:Platform, private userRes:UserRes) {
 		this.initializeApp();
 	}
@@ -52,10 +57,24 @@ export class MyApp {
 		
 			// Will make GET request to https://domain.net/api/users
 			this.userRes.get()
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
 				);
+				
+			this.allUsers = this.userRes.query();
+			
+			this.allUsers1 = this.userRes.query(() => {
+				// Called after setting the data
+				console.log(this.allUsers1);
+			});
+			
+			this.allUsers2 = this.userRes.query({name: 'Roman'}, () => {
+				// Called after setting the data
+				console.log(this.allUsers2);
+			});
+			
 				
 		});
 	}
@@ -67,12 +86,13 @@ export class MyApp {
 
 ##  Build in methods
 
-By default implemented 4 main methods:
+By default implemented 5 main methods:
 
-1. get(data) to execute GET request;
-2. save(data) to execute POST request;
-3. update(data) to execute PUT request;
-4. remove(data) or delete(data) to execute DELETE request.
+1. get(data, callback) to execute GET request;
+2. query(data, callback) to execute GET and recieve an array
+3. save(data, callback) to execute POST request;
+4. update(data, callback) to execute PUT request;
+5. remove(data, callback) or delete(data, callback) to execute DELETE request.
 
 
 ## @ResourceProvide class decorator
@@ -104,7 +124,8 @@ export interface ResourceParamsBase {
 	params?:any,
 	data?:any,
 	requestInterceptor?:ResourceRequestInterceptor,
-	responseInterceptor?:ResourceResponseInterceptor
+	responseInterceptor?:ResourceResponseInterceptor,
+	add2Provides?: boolean
 }
 ```
 
@@ -156,17 +177,22 @@ Default responce interceptor is a function which receives `Observable` object fr
 **Default**: 
 ```javascript
 function (observable:Observable<any>):Observable<any> {
-	observable.map(res => res.json());
-	return observable;
+	return observable.map(res => res.json());
 }
 ```
+
+#### add2Provides
+To create provider the class and it to RESOURCE_PROVIDERS<br>
+**Default**: true<br>
 
 <br>
 
 ### ResourceActionBase
 ```javascript
 export interface ResourceActionBase extends ResourceParamsBase {
-	method:RequestMethod // from angular `angular2/http`
+	method:RequestMethod, // from angular `angular2/http`
+	isArray: boolean,
+	isLazy: boolean
 }
 ```
 
@@ -176,6 +202,13 @@ All parametes will overwrite default one from `ResourceParamsBase`
 Http request method of the action.<br>
 **Ex**: method: RequestMethod.Get
 
+
+#### isArray
+Used if received data is an array
+
+
+#### isLazy
+Is `isLazy` set to true, then the request will not be executed immediately. To execute the request you should subsribe to abservable and hande responces by yourself. 
 
 
 <br>
@@ -217,21 +250,31 @@ export class MyApp {
 
 			// Will make GET request to https://domain.net/api/users
 			this.userRes.get()
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
 				);
+			// OR
+			let user = this.userRes.get();
 				
 			// Will make GET request to https://domain.net/api/users/1
 			this.userRes.get({id: 1})
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
 				);
+			// OR
+			user = this.userRes.get({id: 1});
+			
+			// Will return an array
+			let usersList = <any[]>this.userRes.query();
 				
 				
 			// Will make GET request to https://domain.net/api/users?firstName=John
 			this.userRes.get({firstName: 'John'})
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
@@ -240,6 +283,7 @@ export class MyApp {
 			// Will make POST request to https://domain.net/api/users
 			// with stringify json data in the body
 			this.userRes.save({firstName: 'John', lastName: 'Smith'})
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
@@ -248,6 +292,7 @@ export class MyApp {
 			// Will make POST request to https://domain.net/api/users/1
 			// with stringify json data in the body
 			this.userRes.save({id: 1, firstName: 'John', lastName: 'Smith'})
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
@@ -256,6 +301,7 @@ export class MyApp {
 			// Will make PUT request to https://domain.net/api/users/1
 			// with stringify json data in the body
 			this.userRes.update({id: 1, firstName: 'John', lastName: 'Smith'})
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
@@ -263,6 +309,7 @@ export class MyApp {
 			
 			// Will make DELETE request to https://domain.net/api/users/1
 			this.userRes.remove({id: 1}) // also alias is availabe to this.userRes.delete
+				.$observable
 				.subscribe(
 					res => console.log(res),
 					err => console.log('Err', err)
@@ -277,10 +324,9 @@ export class MyApp {
 **Creating simple resource with custom methods (./resources/UserRes.ts)**
 ```javascript
 // Import necessary staff
-import {Resource, ResourceParams, ResourceAction} from "ng2-resouce-rest";
+import {Resource, ResourceParams, ResourceAction, ResourceResult} from "ng2-resouce-rest";
 import {Injectable} from "angular2/core";
 import {RequestMethod} from "angular2/http";
-import {Observable} from "rxjs/Observable";
 
 
 // Make it Injectable
@@ -299,17 +345,40 @@ export class UserRes extends Resource {
 		method: RequestMethod.Post, // Mandatory field
 		path: '/auth' // Will overwrite default path
 	})
-	login(data:any): Observable<any> { return null; }
+	login(data:any, callback?:Function): ResourceResult { return null; }
+	
+	
+	@ResourceAction({
+		method: RequestMethod.Get, // Mandatory field
+		path: '/list', // Will overwrite default path
+		isArray: true
+	})
+	list(data?:any, callback?:Function): ResourceResult { return null; }
 
 }
 
 // Using in your app
 // Will make POST request to https://domain.net/api/auth with stringify json data in the body
 this.userRes.login({login: 'login', password: 'password'}) 
+	.$observable
 	.subscribe(
 		res => console.log(res),
 		err => console.log('Err', err)
 	);
+
+// Assign the data directly
+let activeUsers = this.userRes.list({isActive: true});
+
+// Using promises
+this.userRes.login({login: 'login', password: 'password'}) 
+	.$observable
+	.toPromise()
+	.then(function(resp){
+		console.log(resp);
+	})
+	.catch(function(err) {
+		console.error(err);
+	});
 
 ```
 
